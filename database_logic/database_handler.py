@@ -2,7 +2,7 @@ from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
 import datetime
-from pydantic import BaseModel,ValidationError, validator,Field
+from pydantic import BaseModel,ValidationError, field_validator,Field,validator
 from typing import Literal
 from tags_algorithm import tagging_algorithm
 from json import dumps
@@ -19,10 +19,11 @@ client = MongoClient(uri)
 class InsertData(BaseModel):
     username:str = Field(...,max_length=14)
     thread_text:str = Field(...,max_length=6000)
-    comment:str = Field(...,max_length=2500)
     category:Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]
+    database_name:str
 
-    @validator("thread_text")
+    @field_validator("thread_text")
+    @classmethod
     def validate_thread_text(cls,value):
         if not value:
             raise ValueError("Thread text can not be empty")
@@ -30,30 +31,38 @@ class InsertData(BaseModel):
             raise ValueError("Thread text is too short")
         return value
     
-    @validator("comment")
-    def validate_comment_text(cls,value):
-        if not value:
-            raise ValueError("Comment text can not be empty")
-        if len(value) < 10:
-            raise ValueError("Comment text is to short")
+    @field_validator("database_name")
+    @classmethod
+    def validate_db_name(cls,value):
+        value  = [i for i in value.split()]
+        if len(value)>1:
+            raise ValueError(f"Lenght of array:{value} exceeds 1 ,use '-' for each word in a company name")
+        value = str(value)
+        value = value.replace("'","")
+        value = value.replace("[","")
+        value = value.replace("]","")
+
+        if "-" not in value:
+            raise ValueError("Must contain '-'")
         return value
+    
     
 class MongoDatabaseHandler:
 
     def __init__(self):
-        pass
+        super().__init__()
 
-    def insertDataThreads(self,database:str, data:InsertData):
+    def insertDataThreads(self, data:InsertData):
         tags:list = tagging_algorithm(data.thread_text).generate_tags(5)
         data_payload = {
             "username":data.username,
             "thread_text":data.thread_text,
             "tags":tags,
             "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
-            "category":[],
+            "category":data.category,
             "comments":[{}]
         }
-        DATABASE = database
+        DATABASE = data.database_name
         db = client[DATABASE]
         thread = db.threads
         thread.insert_one(data_payload)
@@ -66,7 +75,7 @@ class MongoDatabaseHandler:
             return {f"Something went wrong:\n{e}"}
 
     def insertDataComments():
-        pass    
+        pass  
 
     def fetchData(self):
         pass
@@ -79,8 +88,8 @@ class MongoDatabaseHandler:
 
 
 
-testar = MongoDatabaseHandler()
 
+#---------------------------------------EXAMPLE USAGE---------------------------------------------------------------
 long_string = (
     "This is a very long string. This string is designed to be long and contains some comprehensible text. "
     "The purpose of this long string is to repeat certain words. Words like 'long', 'string', and 'text' are "
@@ -93,4 +102,29 @@ long_string = (
     "demonstrates repetition. This repetition makes the string longer and emphasizes certain words. When you see "
     "a long string like this, you can understand how repetition works in a text. This is the end of the long string."
 )
-print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))
+
+try:
+    data = InsertData(username="Kalle",
+                  thread_text=long_string,
+                  category="jobb",
+                  database_name="Telenor-AB",
+                  
+                    )
+except ValidationError as e:
+    print(f"Validation error:{e}")
+
+testar = MongoDatabaseHandler()
+
+try:
+    response = testar.insertDataThreads(data)
+    print(response)
+
+except ValidationError as e:
+    print(f"Validation error{e}")
+
+
+
+
+"""print(testar.insertDataThreads())
+print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
+#-----------------------------------------------------------------------------------------------------------------------
