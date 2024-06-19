@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 import datetime
 from pydantic import BaseModel,ValidationError, validator,Field
+from typing import Literal
 from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
@@ -19,6 +20,7 @@ class InsertData(BaseModel):
     username:str = Field(...,max_length=14)
     thread_text:str = Field(...,max_length=6000)
     comment:str = Field(...,max_length=2500)
+    category:Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]
 
     @validator("thread_text")
     def validate_thread_text(cls,value):
@@ -48,6 +50,7 @@ class MongoDatabaseHandler:
             "thread_text":data.thread_text,
             "tags":tags,
             "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
+            "category":[],
             "comments":[{}]
         }
         DATABASE = database
