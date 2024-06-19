@@ -2,7 +2,7 @@ from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
 import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel,ValidationError, validator,Field
 from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
@@ -10,25 +10,48 @@ load_dotenv()
 
 uri = os.getenv("MONGO_URL")
 client = MongoClient(uri)
-DATABASE = os.getenv("DB_NAME")
-db = client[DATABASE]
-collection = db["threads"]
+#DATABASE = os.getenv("DB_NAME")
+#db = client[DATABASE]
+#collection = db["threads"]
 
-class MongoDatabaseHandler(BaseModel):
+
+class InsertData(BaseModel):
+    username:str = Field(...,max_length=14)
+    thread_text:str = Field(...,max_length=6000)
+    comment:str = Field(...,max_length=2500)
+
+    @validator("thread_text")
+    def validate_thread_text(cls,value):
+        if not value:
+            raise ValueError("Thread text can not be empty")
+        elif len(value) < 500:
+            raise ValueError("Thread text is too short")
+        return value
     
-
+    @validator("comment")
+    def validate_comment_text(cls,value):
+        if not value:
+            raise ValueError("Comment text can not be empty")
+        if len(value) < 10:
+            raise ValueError("Comment text is to short")
+        return value
+    
+class MongoDatabaseHandler:
 
     def __init__(self):
         pass
 
-    def insertData(self,username:str,thread_text:str):
-        tags:list = tagging_algorithm(thread_text).generate_tags(5)
+    def insertDataThreads(self,database:str, data:InsertData):
+        tags:list = tagging_algorithm(data.thread_text).generate_tags(5)
         data_payload = {
-            "username":username,
-            "thread_text":thread_text,
+            "username":data.username,
+            "thread_text":data.thread_text,
             "tags":tags,
-            "timestamp":datetime.datetime.now(tz=datetime.timezone.utc)
+            "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
+            "comments":[{}]
         }
+        DATABASE = database
+        db = client[DATABASE]
         thread = db.threads
         thread.insert_one(data_payload)
 
@@ -39,7 +62,16 @@ class MongoDatabaseHandler(BaseModel):
         except OperationFailure as e:
             return {f"Something went wrong:\n{e}"}
 
-    async def fetchData(self):
+    def insertDataComments():
+        pass    
+
+    def fetchData(self):
+        pass
+
+    def createDatabase(self):
+        pass
+
+    def fetchDatabase(self):
         pass
 
 
@@ -58,4 +90,4 @@ long_string = (
     "demonstrates repetition. This repetition makes the string longer and emphasizes certain words. When you see "
     "a long string like this, you can understand how repetition works in a text. This is the end of the long string."
 )
-print(testar.insertData("Kalle",long_string))
+print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))
