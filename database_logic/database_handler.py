@@ -7,6 +7,7 @@ from typing import Literal
 from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
+import re
 load_dotenv()
 
 uri = os.getenv("MONGO_URL")
@@ -21,6 +22,7 @@ class InsertData(BaseModel):
     thread_text:str = Field(...,max_length=6000)
     category:Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]
     database_name:str
+    star_ratings:Literal[1,2,3,4,5]
 
     @field_validator("thread_text")
     @classmethod
@@ -36,22 +38,28 @@ class InsertData(BaseModel):
     def validate_db_name(cls,value):
         value  = [i for i in value.split()]
         if len(value)>1:
-            raise ValueError(f"Lenght of array:{value} exceeds 1 ,use '-' for each word in a company name")
+            raise ValueError(f"Lenght of array (company name/database name):{value} exceeds 1, use '-' for each word in a company name")
         value = str(value)
         value = value.replace("'","")
         value = value.replace("[","")
         value = value.replace("]","")
 
         if "-" not in value:
-            raise ValueError("Must contain '-'")
+            raise ValueError("Company name/database name must contain '-'")
+
+        value_ = bool(re.search(r"\s"),value)
+        
+        if value_:
+            raise ValueError("Company name/database name can not contain spaces")
+
         return value
-    
-    
+
+
 class MongoDatabaseHandler:
-
     def __init__(self):
-        super().__init__()
+        pass
 
+    #TODO We need to connect this with a SQL database which contains all of the user info such as username, email etc
     def insertDataThreads(self, data:InsertData):
         tags:list = tagging_algorithm(data.thread_text).generate_tags(5)
         data_payload = {
@@ -66,14 +74,15 @@ class MongoDatabaseHandler:
         db = client[DATABASE]
         thread = db.threads
         thread.insert_one(data_payload)
+        client.close()
 
         try:
             response = dumps("Data succesfully inserted")
             return response
 
         except OperationFailure as e:
-            return {f"Something went wrong:\n{e}"}
-
+            return {f"Something went wrong:\n{e}"}   
+    #TODO We need to somehow connect a specific thread with the correct comments comments, best way of doing this could be to get the objectId for a thread document
     def insertDataComments():
         pass  
 
