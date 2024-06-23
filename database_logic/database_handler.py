@@ -8,6 +8,7 @@ from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
 import re
+from mysql.connector import connect, Error
 load_dotenv()
 
 uri = os.getenv("MONGO_URL")
@@ -55,6 +56,40 @@ class InsertData(BaseModel):
         return value
 
 
+class MySQLHandler:
+    def __init__(self):
+        self.database = connect(
+            host = os.getenv("HOST"),
+            port = os.getenv("PORT"),
+            user = os.getenv("USER"),
+            password = os.getenv("PASSWORD"),
+            database = os.getenv("DATABASE_NAME")
+                    )
+    
+
+    def create_table_query(self):
+
+        query = """
+                CREATE TABLE users(
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255),
+                email varchar(255),
+                password VARCHAR(255),
+                acc_creation_date TIMESTAMP,
+                rykte INT)
+                     """
+        try:
+            db_cursor = self.database.cursor()
+            db_cursor.execute(query)
+            db_cursor.close()
+        except Error as e:
+            return {f"Something went wrong: {e}"}
+        return {"Succesfully created table"}
+    
+    def username_thread_relation(username):
+        pass
+ 
+
 class MongoDatabaseHandler:
     def __init__(self):
         pass
@@ -99,7 +134,7 @@ class MongoDatabaseHandler:
 
 
 #---------------------------------------EXAMPLE USAGE---------------------------------------------------------------
-long_string = (
+"""long_string = (
     "This is a very long string. This string is designed to be long and contains some comprehensible text. "
     "The purpose of this long string is to repeat certain words. Words like 'long', 'string', and 'text' are "
     "repeated many times to demonstrate the length and repetition. In this string, you will find that the word "
@@ -132,7 +167,11 @@ except ValidationError as e:
     print(f"Validation error{e}")
 
 
+"""
 
+lol = MySQLHandler
+
+print(lol.create_table_query())
 
 """print(testar.insertDataThreads())
 print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
