@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import datetime
 from pydantic import BaseModel,ValidationError, field_validator,Field,validator
-from typing import Literal
+from typing import Literal, Optional
 from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
@@ -19,11 +19,11 @@ client = MongoClient(uri)
 
 
 class InsertData(BaseModel):
-    username:str = Field(...,max_length=14)
-    thread_text:str = Field(...,max_length=6000)
-    category:Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]
-    database_name:str
-    star_ratings:Literal[1,2,3,4,5]
+    username:Optional[str] = Field(...,max_length=14)
+    thread_text:Optional[str] = Field(...,max_length=6000)
+    category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]]
+    database_name:Optional[str]
+    star_ratings:Optional[Literal[1,2,3,4,5]]
 
     @field_validator("thread_text")
     @classmethod
@@ -54,6 +54,23 @@ class InsertData(BaseModel):
             raise ValueError("Company name/database name can not contain spaces")
 
         return value
+
+import bcrypt
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'),bcrypt.gensalt().decode('utf8'))
+def check_password(hashed_password,plain_password):
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+import hashlib
+import base64
+def check_email(email,hashed_email):
+    sha256_hash = hashlib.sha256(email.encode('utf-8')).digest()
+    expected_hash = base64.b64encode(sha256_hash).decode('utf-8')
+    return hashed_email==expected_hash
+def hash_email(email):
+    sha256_hash = hashlib.sha256(email.encode('utf-8')).digest()
+    hashed_email = base64.b64encode(sha256_hash).decode('utf-8')
+    return hashed_email
 
 
 class MySQLHandler:
@@ -86,7 +103,10 @@ class MySQLHandler:
             return {f"Something went wrong: {e}"}
         return {"Succesfully created table"}
     
-    def username_thread_relation(username):
+    def username_thread_relation(self,username):
+        pass
+
+    def registerUser(self,username,email=None,):
         pass
  
 
