@@ -2,13 +2,14 @@ from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
 import datetime
-from pydantic import BaseModel,ValidationError, field_validator,Field,validator
+from pydantic import BaseModel,ValidationError, field_validator,Field,validator, EmailStr
 from typing import Literal, Optional
 from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
 import re
 from mysql.connector import connect, Error
+from disposable_email_domains import blocklist
 load_dotenv()
 
 uri = os.getenv("MONGO_URL")
@@ -20,6 +21,7 @@ client = MongoClient(uri)
 
 class InsertData(BaseModel):
     username:Optional[str] = Field(...,max_length=14)
+    email:Optional[EmailStr]
     thread_text:Optional[str] = Field(...,max_length=6000)
     category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]]
     database_name:Optional[str]
@@ -52,7 +54,13 @@ class InsertData(BaseModel):
         
         if value_:
             raise ValueError("Company name/database name can not contain spaces")
-
+        return value
+    
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls,value):
+        if value in blocklist:
+            raise ValueError("Email is part of the blacklisted email providers")
         return value
 
 import bcrypt
@@ -90,11 +98,12 @@ class MySQLHandler:
                 CREATE TABLE users(
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(255),
-                email varchar(255),
+                email VARCHAR(255),
                 password VARCHAR(255),
-                acc_creation_date TIMESTAMP,
-                rykte INT)
-                     """
+                acc_creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                rykte INT DEFAULT 0,
+                verified BOOLEAN DEFAULT FALSE)
+                """
         try:
             db_cursor = self.database.cursor()
             db_cursor.execute(query)
@@ -103,12 +112,31 @@ class MySQLHandler:
             return {f"Something went wrong: {e}"}
         return {"Succesfully created table"}
     
+    
+
+    def registerUser(self,username,password,email=None):
+        if email == True:
+            query = f"INSERT INTO users(username,email,password,verified) VALUES (%s, %s, %s, %s)"
+            values = (username,hash_email(email=email),hash_password(password=password),True)
+        else:
+            query = f"INSERT INTO users(username,password,verified) VALUES (%s, %s)"
+            values = (username,hash_password(password=password),False)
+        
+        try:
+            db_cursor = self.database.cursor()
+            db_cursor.execute(query,values)
+            db_cursor.close()
+        except Error as e:
+            return {f"Something went wrong: {e}"}
+        return {"Succesfully inserted data"}
+
+        
     def username_thread_relation(self,username):
         pass
 
-    def registerUser(self,username,email=None,):
-        pass
- 
+    def authenticate(self,username,password):
+        query = f"SELECT password FROM users WHERE username = %s"
+        
 
 class MongoDatabaseHandler:
     def __init__(self):
