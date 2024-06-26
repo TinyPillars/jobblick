@@ -8,7 +8,7 @@ from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
 import re
-from mysql.connector import connect, Error
+from mysql.connector import connect, Error, IntegrityError
 from disposable_email_domains import blocklist
 load_dotenv()
 
@@ -65,7 +65,8 @@ class InsertData(BaseModel):
 
 import bcrypt
 def hash_password(password):
-    return bcrypt.hashpw(password.encode('utf-8'),bcrypt.gensalt().decode('utf8'))
+    return bcrypt.hashpw(password.encode('utf-8'),bcrypt.gensalt())
+
 def check_password(hashed_password,plain_password):
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
@@ -93,12 +94,11 @@ class MySQLHandler:
     
 
     def create_table_query(self):
-
         query = """
                 CREATE TABLE users(
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(255),
-                email VARCHAR(255),
+                username VARCHAR(255) UNIQUE,
+                email VARCHAR(255) UNIQUE,
                 password VARCHAR(255),
                 acc_creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 rykte INT DEFAULT 0,
@@ -115,27 +115,59 @@ class MySQLHandler:
     
 
     def registerUser(self,username,password,email=None):
-        if email == True:
-            query = f"INSERT INTO users(username,email,password,verified) VALUES (%s, %s, %s, %s)"
-            values = (username,hash_email(email=email),hash_password(password=password),True)
+        hashed_email = hash_email(email=email)
+        hashed_password = hash_password(password=password)
+        if email:
+            query = "INSERT INTO users(username,email,password,verified) VALUES (%s, %s, %s, %s)"
+            values = (username,hashed_email,hashed_password,True)
         else:
-            query = f"INSERT INTO users(username,password,verified) VALUES (%s, %s)"
-            values = (username,hash_password(password=password),False)
+            query = "INSERT INTO users(username,password,verified) VALUES (%s, %s)"
+            values = (username,hashed_password,False)
         
         try:
             db_cursor = self.database.cursor()
             db_cursor.execute(query,values)
+            self.database.commit()
             db_cursor.close()
+        except IntegrityError as e:
+            return {f"Username: '{username}' or '{email}' already registered":str(e)}
         except Error as e:
-            return {f"Something went wrong: {e}"}
+            return {f"Something went wrong: {e.msg}"}
         return {"Succesfully inserted data"}
 
         
     def username_thread_relation(self,username):
         pass
 
-    def authenticate(self,username,password):
-        query = f"SELECT password FROM users WHERE username = %s"
+    def authenticate(self,password,username=None,email=None):
+        if email and username:
+            raise ValueError("Must use username or email, can not use both")  
+        
+        elif username:
+            query = f"SELECT password FROM users WHERE username = %s"
+            param = (username,)
+        elif email:
+            hashed_email = hash_email(email=email)
+            query = f"SELECT password FROM users WHERE email=%s"
+            param = (hashed_email,)
+        else:
+            raise ValueError("No username or email was selected")
+        
+        try:
+            db_cursor = self.database.cursor()
+            db_cursor.execute(query,param)
+            result = db_cursor.fetchone()
+            db_cursor.close()
+
+            if result is None:
+                return {"Authentication failed":"User not found"}
+            stored_password = result[0]
+            if check_password(hashed_password=stored_password,plain_password=password):
+                return {"Authentication succesfull":True}
+            else:
+                return {"Authentication failed":"Incorrect password"}
+        except Error as e:
+            return {"Something went wrong":str(e)}
         
 
 class MongoDatabaseHandler:
@@ -217,9 +249,16 @@ except ValidationError as e:
 
 """
 
-lol = MySQLHandler
+test = MySQLHandler()
 
-print(lol.create_table_query())
+#print(test.registerUser(password="password0",username="banan0",email="abdi_0@gmail.com"))
+#print(test.create_table_query())
+print(test.registerUser(username="banan1",password="password1",email="abdi_1@gmail.com"))
+
+"""for i in range(4):
+    print(lol.registerUser(username=f"banan{i}",password=f"password{i}",email=f"abdi_{i}@gmail.com"))
+"""
+
 
 """print(testar.insertDataThreads())
 print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
