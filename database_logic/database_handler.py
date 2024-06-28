@@ -9,7 +9,10 @@ from json import dumps
 from pymongo.errors import OperationFailure
 import re
 from mysql.connector import connect, Error, IntegrityError
+from bson import ObjectId
 from disposable_email_domains import blocklist
+from scripts.company_verifier import check_company_existence
+import asyncio
 load_dotenv()
 
 uri = os.getenv("MONGO_URL")
@@ -20,40 +23,41 @@ client = MongoClient(uri)
 
 
 class InsertData(BaseModel):
-    username:Optional[str] = Field(...,max_length=14)
-    email:Optional[EmailStr]
-    thread_text:Optional[str] = Field(...,max_length=6000)
-    category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]]
-    database_name:Optional[str]
-    star_ratings:Optional[Literal[1,2,3,4,5]]
+    username:Optional[str] = Field(None,max_length=14)
+    email:Optional[EmailStr] = None
+    thread_text:Optional[str] = Field(None,max_length=6000)
+    category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]] = None
+    company_profile:Optional[str] = None
+    star_ratings:Optional[Literal[1,2,3,4,5]] = None
 
     @field_validator("thread_text")
     @classmethod
     def validate_thread_text(cls,value):
-        if not value:
-            raise ValueError("Thread text can not be empty")
-        elif len(value) < 500:
-            raise ValueError("Thread text is too short")
+        if value is not None:
+            if len(value) < 500:
+                raise ValueError("Thread text is too short")
         return value
     
-    @field_validator("database_name")
+    @field_validator("company_profile")
     @classmethod
-    def validate_db_name(cls,value):
-        value  = [i for i in value.split()]
-        if len(value)>1:
-            raise ValueError(f"Lenght of array (company name/database name):{value} exceeds 1, use '-' for each word in a company name")
-        value = str(value)
-        value = value.replace("'","")
-        value = value.replace("[","")
-        value = value.replace("]","")
-
-        if "-" not in value:
-            raise ValueError("Company name/database name must contain '-'")
-
-        value_ = bool(re.search(r"\s"),value)
+    def validate_compamy_name(cls,value):
+        if value is None:
+            raise ValueError("Company name can not be 'None")
         
-        if value_:
-            raise ValueError("Company name/database name can not contain spaces")
+        value_array  = [i for i in value.split()]
+        if len(value_array)>1:
+            raise ValueError(f"Lenght of array (company name):{value} exceeds 1, use '-' for each word in a company name")
+        
+        value_str = str(value_array)
+        value_str = value.replace("'","")
+        value_str = value.replace("[","")
+        value_str = value.replace("]","")
+
+        if "-" not in value_str:
+            raise ValueError("Company name name must contain '-'")
+        
+        if bool(re.search(r"\s",value_str)):
+            raise ValueError("Company name name can not contain spaces")
         return value
     
     @field_validator("email")
@@ -175,39 +179,119 @@ class MongoDatabaseHandler:
         pass
 
     #TODO We need to connect this with a SQL database which contains all of the user info such as username, email etc
-    def insertDataThreads(self, data:InsertData):
-        tags:list = tagging_algorithm(data.thread_text).generate_tags(5)
-        data_payload = {
-            "username":data.username,
-            "thread_text":data.thread_text,
-            "tags":tags,
-            "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
-            "category":data.category,
-            "comments":[{}]
-        }
-        DATABASE = data.database_name
+    #TODO Maybe we can't store user threads in the company forum database, we'll need to store user threads in their own database..., but each thread needs to be tagged with which forum it was posted in
+
+    @classmethod
+    def threadRelationship(cls,thread,company_profile):
+        THREADS_RELATIONS_DB = client["threads-relations"]
+        relations_collection = THREADS_RELATIONS_DB.relations
+
+        data_payload = {"thread_id":thread["_id"],
+                        "username":thread["username"],
+                        "company_name":company_profile}
+        
+        try:
+            relations_collection.insert_one(data_payload)
+            return {"message":"Thread relationship succesfully created"}
+        except OperationFailure as e:
+            return {"error":f"Something went wrong: {e}"}
+        
+
+    def createCompanyProfile(self,org_number:str):
+        
+
+        company_name = asyncio.run(check_company_existence(org_number))
+
+        if company_name:
+            data_payload = {
+                "company_name":company_name,
+                "org_number":org_number,
+                "company_info":[],
+                "threads": [],
+            
+            }
+        else:
+            return {"error":"company doesn't exist"}
+
+        DATABASE = os.getenv("DB_NAME")
         db = client[DATABASE]
-        thread = db.threads
-        thread.insert_one(data_payload)
-        client.close()
+        collection = db.companies
 
         try:
-            response = dumps("Data succesfully inserted")
+            if collection.find_one({"company_name":company_name}):
+                return {"Message":"Company profile already exsists"}
+            
+            collection.insert_one(data_payload)
+            return {"Message":"Succesfully inserted data"}
+        
+        except OperationFailure as e:
+            return {"error":f"Something went wrong {e}"}
+        finally:
+            client.close()
+        #return {"Succesfully inserted data"}
+        #except OperationFailure as e:
+        #return {f"Something wen wrong: {e}"}
+        
+
+    #TODO add the following: "upvotes":int() and "downvotes":int()
+    def insertDataThreads(self, username,thread_text,category,company_profile):
+        tags:list = tagging_algorithm(thread_text).generate_tags(5)
+        data_payload = {
+            "_id":ObjectId(),
+            "username":username,
+            "thread_text":thread_text,
+            "tags":tags,
+            "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
+            "category":category,
+            "comments":[]
+        }
+        DATABASE = os.getenv("DB_NAME")
+        db = client[DATABASE]
+        companies_collection = db.companies
+        
+
+        try:
+            result = companies_collection.update_one(
+                {"company_name":company_profile},
+                {"$push":{"threads":data_payload}}
+            )
+            
+            if result.modified_count > 0:
+                inserted_thread = companies_collection.find_one(
+                    {"company_name":company_profile},
+                    {"threads": {"$slice":-1}}
+                )["threads"][-1]
+
+                MongoDatabaseHandler.threadRelationship(inserted_thread,company_profile=company_profile)
+                response = dumps("Data succesfully inserted into the company profile")
+            else:
+                response = dumps("No company profile found to insert the data")
             return response
 
         except OperationFailure as e:
-            return {f"Something went wrong:\n{e}"}   
-    #TODO We need to somehow connect a specific thread with the correct comments comments, best way of doing this could be to get the objectId for a thread document
+            return {f"Something went wrong:\n{e}"}  
+        
+        finally:
+            client.close() 
+    #
+    # TODO We need to somehow connect a specific thread with the correct comments comments, best way of doing this could be to get the objectId for a thread document
     def insertDataComments():
         pass  
+    
+    #TODO I think I've been thinking about this all wrong, now that I'm thinking of it all user threads must be in their own database... Or something //2024-06-27
 
-    def fetchData(self):
-        pass
+    
+    def fetchUserThreads(self,data:InsertData,items:int=1):
+        DATABASE = data.database_name
+        db = client[DATABASE]
+        thread = db.threads
+        user_threads = thread.find({"username":data.username}).limit(items)
+        threads_list = list(user_threads)
 
-    def createDatabase(self):
-        pass
+        client.close()
 
-    def fetchDatabase(self):
+
+    def fetchCompanyProfile(self):
         pass
 
 
@@ -231,7 +315,7 @@ try:
     data = InsertData(username="Kalle",
                   thread_text=long_string,
                   category="jobb",
-                  database_name="Telenor-AB",
+                  company_profile="telenor-sverige-aktiebolag",
                   
                     )
 except ValidationError as e:
@@ -240,22 +324,54 @@ except ValidationError as e:
 testar = MongoDatabaseHandler()
 
 try:
-    response = testar.insertDataThreads(data)
+    response = testar.insertDataThreads(username=data.username,
+                                        
+                                        thread_text=data.thread_text,
+                                        
+                                        company_profile=data.company_profile,
+                                        
+                                        category=data.category)
     print(response)
 
 except ValidationError as e:
     print(f"Validation error{e}")
-
-
 """
 
-test = MySQLHandler()
 
+
+"""data = InsertData(
+    company_profile="fag-Sverige-Aktiebolag"
+)
+
+test = MySQLHandler()
+"""
+
+"""mongo_test = MongoDatabaseHandler()
+
+print(mongo_test.createCompanyProfile(org_number="556421-0309"))
+"""
+
+"""async def main():
+    checker = CompanyChecker()
+    await checker.initialize()
+    try:
+        org_nummer = "556421-0309"  # Example organization number
+        company_name = await checker.check_company_existence(org_nummer)
+        if company_name:
+            print(f"Company exists: {company_name}")
+        else:
+            print("Company does not exist")
+    finally:
+        await checker.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())"""
 #print(test.registerUser(password="password0",username="banan0",email="abdi_0@gmail.com"))
 #print(test.create_table_query())
-print(test.registerUser(username="banan1",password="password1",email="abdi_1@gmail.com"))
+#print(test.registerUser(username="banan1",password="password1",email="abdi_1@gmail.com"))
 
-"""for i in range(4):
+"""
+for i in range(4):
     print(lol.registerUser(username=f"banan{i}",password=f"password{i}",email=f"abdi_{i}@gmail.com"))
 """
 
