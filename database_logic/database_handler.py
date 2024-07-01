@@ -140,8 +140,6 @@ class MySQLHandler:
         return {"Succesfully inserted data"}
 
         
-    def username_thread_relation(self,username):
-        pass
 
     def authenticate(self,password,username=None,email=None):
         if email and username:
@@ -281,14 +279,20 @@ class MongoDatabaseHandler:
     #TODO I think I've been thinking about this all wrong, now that I'm thinking of it all user threads must be in their own database... Or something //2024-06-27
 
     
-    def fetchUserThreads(self,data:InsertData,items:int=1):
-        DATABASE = data.database_name
-        db = client[DATABASE]
-        thread = db.threads
-        user_threads = thread.find({"username":data.username}).limit(items)
-        threads_list = list(user_threads)
-
-        client.close()
+    def fetchUserThreads(self,username,items:int=1): 
+        try:
+            DATABASE = "threads-relations"
+            db = client[DATABASE]
+            thread = db.relations
+            user_threads = thread.find({"username":username}).limit(items)
+            threads_list = list(user_threads)
+            return threads_list
+        
+        except OperationFailure as e:
+            return {"Something went wrong":str(e)}
+        
+        finally:
+            client.close()
 
 
     def fetchCompanyProfile(self):
@@ -379,3 +383,9 @@ for i in range(4):
 """print(testar.insertDataThreads())
 print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 #-----------------------------------------------------------------------------------------------------------------------
+
+user = MongoDatabaseHandler()
+
+data = InsertData(username="Kalle")
+
+print(user.fetchUserThreads(username="Kalle"))
