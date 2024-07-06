@@ -2,3 +2,9 @@ pydantic-settings==2.3.3
 pymongo==4.7.3
 fastapi==0.111.0
 mysql-connector-python==8.4.0
+bcrypt==4.1.3
+publicsuffixlist
+requests
+disposable-email-domains==0.0.103
+email-validator
+playwright #After doing pip install you need to do: 'playwright install'
