@@ -180,24 +180,42 @@ class MongoDatabaseHandler:
     #TODO Maybe we can't store user threads in the company forum database, we'll need to store user threads in their own database..., but each thread needs to be tagged with which forum it was posted in
 
     @classmethod
-    def threadRelationship(cls,thread,company_profile):
+    def threadRelationship(cls,thread):
         THREADS_RELATIONS_DB = client["threads-relations"]
         relations_collection = THREADS_RELATIONS_DB.relations
 
         data_payload = {"thread_id":thread["_id"],
                         "username":thread["username"],
-                        "company_name":company_profile}
+                        "company_name":thread["company_name"] }
         
         try:
             relations_collection.insert_one(data_payload)
             return {"message":"Thread relationship succesfully created"}
         except OperationFailure as e:
             return {"error":f"Something went wrong: {e}"}
+        finally:
+            client.close()
+        
+    @classmethod
+    def commentsRelationship(cls,commenter,thread):
+        COMMENTS_RELATIONS_DB = client["comments-relations"]
+        relations_collection = COMMENTS_RELATIONS_DB.relations
+
+        data_payload = { "thread_id":thread["_id"],
+                        "thread_title":thread["title"],
+                        "commenter": commenter
+                        }
+        
+        try:
+            relations_collection.insert_one(data_payload)
+            return {"message":"comment successfully inserted"}
+        except OperationFailure as e:
+            return {"error":f"Something went wrong {e}"}
+        finally:
+            client.close()
         
 
     def createCompanyProfile(self,org_number:str):
-        
-
         company_name = asyncio.run(check_company_existence(org_number))
 
         if company_name:
@@ -232,15 +250,17 @@ class MongoDatabaseHandler:
         
 
     #TODO add the following: "upvotes":int() and "downvotes":int()
-    def insertDataThreads(self, username,thread_text,category,company_profile):
+    def insertDataThreads(self, title_text,username,thread_text,category,company_profile):
         tags:list = tagging_algorithm(thread_text).generate_tags(5)
         data_payload = {
             "_id":ObjectId(),
+            "title_text":title_text,
             "username":username,
             "thread_text":thread_text,
             "tags":tags,
             "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
             "category":category,
+            "company_name":company_profile,
             "comments":[]
         }
         DATABASE = os.getenv("DB_NAME")
@@ -272,18 +292,22 @@ class MongoDatabaseHandler:
         finally:
             client.close() 
     #
-    # TODO We need to somehow connect a specific thread with the correct comments comments, best way of doing this could be to get the objectId for a thread document
-    def insertDataComments():
-        pass  
-    
-    #TODO I think I've been thinking about this all wrong, now that I'm thinking of it all user threads must be in their own database... Or something //2024-06-27
+    #TODO We need to somehow connect a specific thread with the correct comments, best way of doing this could be to get the objectId for a thread document
+    def insertDataComments(thread_id,commenter,comment_text):
+        DATABASE = "foretagsforum"
+        db = client[DATABASE]
+        thread = db.companies
 
+        try:
+            result = {}
+        except OperationFailure as e:
+            return {"error":f"Something went wrong: {e}"}
     
     def fetchUserThreads(self,username,items:int=1): 
-        try:
-            DATABASE = "threads-relations"
-            db = client[DATABASE]
-            thread = db.relations
+        DATABASE = "threads-relations"
+        db = client[DATABASE]
+        thread = db.relations
+        try:    
             user_threads = thread.find({"username":username}).limit(items)
             threads_list = list(user_threads)
             return threads_list
