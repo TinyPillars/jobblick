@@ -216,8 +216,6 @@ class MongoDatabaseHandler:
         
 
     def createCompanyProfile(self,org_number:str):
-        company_name = asyncio.run(check_company_existence(org_number))
-
         if company_name:
             data_payload = {
                 "company_name":company_name,
@@ -227,12 +225,12 @@ class MongoDatabaseHandler:
             
             }
         else:
-            return {"error":"company doesn't exist"}
-
+            return {"error":"company doesn't exist"}   
+        
         DATABASE = os.getenv("DB_NAME")
         db = client[DATABASE]
         collection = db.companies
-
+        company_name = asyncio.run(check_company_existence(org_number))
         try:
             if collection.find_one({"company_name":company_name}):
                 return {"Message":"Company profile already exsists"}
@@ -242,11 +240,6 @@ class MongoDatabaseHandler:
         
         except OperationFailure as e:
             return {"error":f"Something went wrong {e}"}
-        finally:
-            client.close()
-        #return {"Succesfully inserted data"}
-        #except OperationFailure as e:
-        #return {f"Something wen wrong: {e}"}
         
 
     #TODO add the following: "upvotes":int() and "downvotes":int()
@@ -261,7 +254,7 @@ class MongoDatabaseHandler:
             "timestamp":datetime.datetime.now(tz=datetime.timezone.utc),
             "category":category,
             "company_name":company_profile,
-            "comments":[]
+            "comments":{}
         }
         DATABASE = os.getenv("DB_NAME")
         db = client[DATABASE]
@@ -280,28 +273,58 @@ class MongoDatabaseHandler:
                     {"threads": {"$slice":-1}}
                 )["threads"][-1]
 
-                MongoDatabaseHandler.threadRelationship(inserted_thread,company_profile=company_profile)
+                MongoDatabaseHandler.threadRelationship(inserted_thread)
                 response = dumps("Data succesfully inserted into the company profile")
             else:
                 response = dumps("No company profile found to insert the data")
             return response
 
         except OperationFailure as e:
-            return {f"Something went wrong:\n{e}"}  
+            return {f"Something went wrong:\n{e}"}
         
         finally:
             client.close() 
     #
     #TODO We need to somehow connect a specific thread with the correct comments, best way of doing this could be to get the objectId for a thread document
-    def insertDataComments(thread_id,commenter,comment_text):
+    def insertDataComments(self, company_profile, thread_id, commenter, comment_text):
         DATABASE = "foretagsforum"
         db = client[DATABASE]
-        thread = db.companies
+        collection = db.companies
 
         try:
-            result = {}
+            company_doc = collection.find_one({"company_name": company_profile})
+            if not company_doc:
+                return {"error": "Company not found"}
+
+            thread_exists = any(str(thread['_id']) == thread_id for thread in company_doc.get('threads', []))
+            if not thread_exists:
+                return {"error": "Thread not found in company document"}
+
+            # Convert thread_id to ObjectId
+            thread_id_obj = ObjectId(thread_id)
+
+            # First, ensure 'comments' is an array
+            collection.update_one(
+                {"company_name": company_profile, "threads._id": thread_id_obj},
+                {"$set": {"threads.$.comments": []}}
+            )
+
+            # Now, push the new comment
+            result = collection.update_one(
+                {"company_name": company_profile, "threads._id": thread_id_obj},
+                {"$push": {"threads.$.comments": {"commenter": commenter, "comment_text": comment_text}}}
+            )
+
+            if result.matched_count == 0:
+                return {"error": "Update query did not match any documents"}
+
+            return {"success": True, "matched_count": result.matched_count, "modified_count": result.modified_count}
         except OperationFailure as e:
-            return {"error":f"Something went wrong: {e}"}
+            return {"error": f"Something went wrong: {e}"}
+        except Exception as e:
+            return {"error": f"Unexpected error {e}"}
+        finally:
+            client.close()
     
     def fetchUserThreads(self,username,items:int=1): 
         DATABASE = "threads-relations"
@@ -326,6 +349,12 @@ class MongoDatabaseHandler:
 
 
 #---------------------------------------EXAMPLE USAGE---------------------------------------------------------------
+
+
+"""mongo_test = MongoDatabaseHandler()
+
+print(mongo_test.createCompanyProfile(org_number="556321-3692"))
+"""
 """long_string = (
     "This is a very long string. This string is designed to be long and contains some comprehensible text. "
     "The purpose of this long string is to repeat certain words. Words like 'long', 'string', and 'text' are "
@@ -340,7 +369,7 @@ class MongoDatabaseHandler:
 )
 
 try:
-    data = InsertData(username="Kalle",
+    data = InsertData(username="Bertil",
                   thread_text=long_string,
                   category="jobb",
                   company_profile="telenor-sverige-aktiebolag",
@@ -352,7 +381,8 @@ except ValidationError as e:
 testar = MongoDatabaseHandler()
 
 try:
-    response = testar.insertDataThreads(username=data.username,
+    response = testar.insertDataThreads(title_text="fagget",
+                                        username=data.username,
                                         
                                         thread_text=data.thread_text,
                                         
@@ -362,8 +392,8 @@ try:
     print(response)
 
 except ValidationError as e:
-    print(f"Validation error{e}")
-"""
+    print(f"Validation error{e}")"""
+
 
 
 
@@ -376,8 +406,7 @@ test = MySQLHandler()
 
 """mongo_test = MongoDatabaseHandler()
 
-print(mongo_test.createCompanyProfile(org_number="556421-0309"))
-"""
+print(mongo_test.createCompanyProfile(org_number="556435-9981"))"""
 
 """async def main():
     checker = CompanyChecker()
@@ -408,8 +437,15 @@ for i in range(4):
 print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 #-----------------------------------------------------------------------------------------------------------------------
 
-user = MongoDatabaseHandler()
 
-data = InsertData(username="Kalle")
 
-print(user.fetchUserThreads(username="Kalle"))
+
+
+"""user = MongoDatabaseHandler()
+print(user.insertDataComments(
+    company_profile="magnussons-fisk-ab",
+    thread_id="6689bb8ed93beba432879354",
+    commenter="Nils",
+    comment_text="bing bingo bingo"
+))"""
+                                                                            
