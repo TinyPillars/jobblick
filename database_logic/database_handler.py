@@ -193,8 +193,6 @@ class MongoDatabaseHandler:
             return {"message":"Thread relationship succesfully created"}
         except OperationFailure as e:
             return {"error":f"Something went wrong: {e}"}
-        finally:
-            client.close()
         
     @classmethod
     def commentsRelationship(cls,commenter,thread):
@@ -211,8 +209,6 @@ class MongoDatabaseHandler:
             return {"message":"comment successfully inserted"}
         except OperationFailure as e:
             return {"error":f"Something went wrong {e}"}
-        finally:
-            client.close()
         
 
     def createCompanyProfile(self,org_number:str):
@@ -240,6 +236,7 @@ class MongoDatabaseHandler:
         
         except OperationFailure as e:
             return {"error":f"Something went wrong {e}"}
+        
         
 
     #TODO add the following: "upvotes":int() and "downvotes":int()
@@ -281,9 +278,7 @@ class MongoDatabaseHandler:
 
         except OperationFailure as e:
             return {f"Something went wrong:\n{e}"}
-        
-        finally:
-            client.close() 
+
     #
     #TODO We need to somehow connect a specific thread with the correct comments, best way of doing this could be to get the objectId for a thread document
     def insertDataComments(self, company_profile, thread_id, commenter, comment_text):
@@ -324,7 +319,7 @@ class MongoDatabaseHandler:
         except Exception as e:
             return {"error": f"Unexpected error {e}"}
         finally:
-            client.close()
+            return {"Success":"Data inserted"}
     
     def fetchUserThreads(self,username,items:int=1): 
         DATABASE = "threads-relations"
@@ -338,8 +333,6 @@ class MongoDatabaseHandler:
         except OperationFailure as e:
             return {"Something went wrong":str(e)}
         
-        finally:
-            client.close()
 
 
     def fetchCompanyProfile(self):
@@ -441,11 +434,11 @@ print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 
 
 
-"""user = MongoDatabaseHandler()
+user = MongoDatabaseHandler()
 print(user.insertDataComments(
     company_profile="magnussons-fisk-ab",
     thread_id="6689bb8ed93beba432879354",
     commenter="Nils",
     comment_text="bing bingo bingo"
-))"""
+))
                                                                             
