@@ -13,6 +13,8 @@ from bson import ObjectId
 from disposable_email_domains import blocklist
 from scripts.company_verifier import check_company_existence
 import asyncio
+from json import JSONEncoder
+from json import loads
 load_dotenv()
 
 uri = os.getenv("MONGO_URL")
@@ -335,8 +337,44 @@ class MongoDatabaseHandler:
         
 
 
-    def fetchCompanyProfile(self):
-        pass
+    def fetchCompanyProfile(self, company_name, items=10):
+        DATABASE = os.getenv("DB_NAME")
+        db = client[DATABASE]
+        company_profile = db.companies
+
+        try:
+            company = company_profile.find({"company_name": company_name}).limit(items)
+            company_list = list(company)
+
+            def get_structure(obj, top_level=False):
+                if isinstance(obj, dict):
+                    if top_level:
+                        return {
+                            k: v if k in ['_id', 'company_name', 'org_number', 'company_info'] 
+                            else get_structure(v) 
+                            for k, v in obj.items()
+                        }
+                    else:
+                        return {k: get_structure(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [get_structure(v) for v in obj[:1]] if obj else []
+                elif isinstance(obj, ObjectId):
+                    return str(obj)
+                else:
+                    return type(obj).__name__
+
+            structure = [get_structure(doc, top_level=True) for doc in company_list]
+
+            class ObjectEncoder(JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, ObjectId):
+                        return str(obj)
+                    return JSONEncoder.default(self, obj)
+            
+            return loads(dumps(structure, cls=ObjectEncoder))
+
+        except OperationFailure as e:
+            return {"error": f"Something went wrong: {e}"}
 
 
 
@@ -435,10 +473,17 @@ print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 
 
 user = MongoDatabaseHandler()
-print(user.insertDataComments(
+"""print(user.insertDataComments(
     company_profile="magnussons-fisk-ab",
     thread_id="6689bb8ed93beba432879354",
     commenter="Nils",
     comment_text="bing bingo bingo"
-))
+))"""
+
+
+data = InsertData(company_profile="telenor-sverige-aktiebolag")
+
+struct = user.fetchCompanyProfile(data.company_profile)
+
+print(dumps(struct,indent=4))
                                                                             
