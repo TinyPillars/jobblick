@@ -1,0 +1,11 @@
+MONGO_URL = "mongodb+srv://developeradmin:4c---0V16--P-Uz8----3r-pO13----@cluster.a0h2slh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster"
+DB_NAME = "foretagsforum"
+#-------------------------------------------
+
+
+HOST = "localhost"
+USER = "root"
+PASSWORD = ""
+PORT =3306
+
+DATABASE_NAME = "user_credentials"

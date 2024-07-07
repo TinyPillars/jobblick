@@ -1,0 +1,5 @@
+/.DS_Store
+/.vscode/
+/jobblick.egg-info/
+/jobblick/
+/database_logic/__pycache__/
