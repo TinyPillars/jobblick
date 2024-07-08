@@ -45,12 +45,21 @@ def test_insert_data_validation():
 # Test database_handler Methods
 @patch('database_handler.MongoClient')
 def test_mongo_database_handler(mock_mongo_client):
+    """
+    Test the MongoDatabaseHandler class methods using a mock MongoDB client.
+
+    Args:
+        mock_mongo_client (MagicMock): A mock MongoDB client.
+
+    Tests:
+        - createCompanyProfile: Verifies that a company profile is created and the correct ID is returned.
+    """
     mock_db = MagicMock()
     mock_mongo_client.return_value = mock_db
 
     handler = MongoDatabaseHandler()
 
-    #Test createCompanyProfile
+    # Test createCompanyProfile
     mock_collection = MagicMock()
     mock_db.__getitem__.return_value = mock_collection
     mock_collection.insert_one.return_value.inserted_id = "12345"
@@ -60,9 +69,5 @@ def test_mongo_database_handler(mock_mongo_client):
     mock_collection.insert_one.assert_called_once()
 
     # Add more tests for other methods similarly...
-
-
-
-
 
 
