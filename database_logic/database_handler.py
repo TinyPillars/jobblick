@@ -214,6 +214,12 @@ class MongoDatabaseHandler:
         
 
     def createCompanyProfile(self,org_number:str):
+         
+        
+        DATABASE = os.getenv("DB_NAME")
+        db = client[DATABASE]
+        collection = db.companies
+        company_name = asyncio.run(check_company_existence(org_number))
         if company_name:
             data_payload = {
                 "company_name":company_name,
@@ -223,12 +229,7 @@ class MongoDatabaseHandler:
             
             }
         else:
-            return {"error":"company doesn't exist"}   
-        
-        DATABASE = os.getenv("DB_NAME")
-        db = client[DATABASE]
-        collection = db.companies
-        company_name = asyncio.run(check_company_existence(org_number))
+            return {"error":"company doesn't exist"}  
         try:
             if collection.find_one({"company_name":company_name}):
                 return {"Message":"Company profile already exsists"}
@@ -472,13 +473,13 @@ print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 
 
 
-user = MongoDatabaseHandler()
-"""print(user.insertDataComments(
+"""user = MongoDatabaseHandler()
+print(user.insertDataComments(
     company_profile="magnussons-fisk-ab",
     thread_id="6689bb8ed93beba432879354",
     commenter="Nils",
     comment_text="bing bingo bingo"
-))"""
+))
 
 
 data = InsertData(company_profile="telenor-sverige-aktiebolag")
@@ -486,4 +487,10 @@ data = InsertData(company_profile="telenor-sverige-aktiebolag")
 struct = user.fetchCompanyProfile(data.company_profile)
 
 print(dumps(struct,indent=4))
-                                                                            
+""" 
+
+user = MongoDatabaseHandler()
+
+result = user.createCompanyProfile(org_number="556436-6739")
+
+print(result)

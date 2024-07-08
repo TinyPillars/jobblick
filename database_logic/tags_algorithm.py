@@ -65,7 +65,7 @@ class tagging_algorithm:
         return top_tags
 
 # Sample long string
-long_string = (
+"""long_string = (
     "This is a very long string. This string is designed to be long and contains some comprehensible text. "
     "The purpose of this long string is to repeat certain words. Words like 'long', 'string', and 'text' are "
     "repeated many times to demonstrate the length and repetition. In this string, you will find that the word "
@@ -81,3 +81,4 @@ long_string = (
 # Create an instance of the tagging algorithm class and generate tags
 time_to_tag = tagging_algorithm(long_string)
 print(time_to_tag.generate_tags(num_tags=4))
+"""
