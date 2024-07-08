@@ -71,3 +71,19 @@ def test_mongo_database_handler(mock_mongo_client):
     # Add more tests for other methods similarly...
 
 
+@patch('database_handler.connect')
+def test_mysql_handler(mock_connect):
+    mock_connection = MagicMock()
+    mock_connect.return_value = mock_connection
+    mock_cursor = MagicMock()
+    mock_connection.cursor.return_value.__enter__.return_value = mock_cursor
+    
+    handler = MySQLHandler()
+    
+    # Test registerUser
+    mock_cursor.execute.side_effect = None
+    result = handler.registerUser(username="testuser", password="password", email="test@example.com")
+    assert result == "User registered"
+    mock_cursor.execute.assert_called()
+
+    # Add more tests for other methods similarly...
