@@ -8,3 +8,4 @@ requests
 disposable-email-domains==0.0.103
 email-validator
 playwright #After doing pip install you need to do: 'playwright install'
+beautifulsoup4
