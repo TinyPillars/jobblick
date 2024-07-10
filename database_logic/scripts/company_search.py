@@ -2,6 +2,7 @@ import asyncio
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
+import json
 
 async def search_companies(query: str, limit: Optional[int] = None) -> List[Dict[str, str]]:
     async with async_playwright() as p:
@@ -56,6 +57,11 @@ async def search_companies(query: str, limit: Optional[int] = None) -> List[Dict
                     if name_elem:
                         company['name'] = name_elem.text.strip()
                     
+                    # Org number
+                    org_number_elem = company_div.find('p', class_='mi-flex mi-justify-start')
+                    if org_number_elem:
+                        company['org_number'] = org_number_elem.text.strip()
+                    
                     # Address and Postal locality
                     address_elem = company_div.find('address')
                     if address_elem:
@@ -68,6 +74,11 @@ async def search_companies(query: str, limit: Optional[int] = None) -> List[Dict
                     status_elem = company_div.find('p', class_='mi-mb-3')
                     if status_elem:
                         company['status'] = status_elem.text.strip()
+                    
+                    # Phone number
+                    phone_elem = company_div.find('a', class_='button md:button-lg button-primary-nd mi-font-semibold !mi-text-base')
+                    if phone_elem:
+                        company['phone'] = phone_elem.text.strip()
                     
                     # Additional information
                     info_div = company_div.find('div', class_='mi-w-full mi-flex mi-flex-wrap')
@@ -116,7 +127,7 @@ async def main():
     companies = await search_companies(query, limit)
     
     for company in companies:
-        print(company)
+        print(json.dumps(company, indent=4))
 
 if __name__ == "__main__":
     asyncio.run(main())
