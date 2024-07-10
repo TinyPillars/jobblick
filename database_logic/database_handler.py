@@ -197,25 +197,45 @@ class MongoDatabaseHandler:
             return {"error":f"Something went wrong: {e}"}
         
     @classmethod
-    def commentsRelationship(cls,commenter,thread):
+    def commentsRelationship(cls, commenter, thread_id):
         COMMENTS_RELATIONS_DB = client["comments-relations"]
         relations_collection = COMMENTS_RELATIONS_DB.relations
-
-        data_payload = { "thread_id":thread["_id"],
-                        "thread_title":thread["title"],
-                        "commenter": commenter
-                        }
+        
+        # Fetch the thread title from the main database
+        DATABASE = "foretagsforum"
+        db = client[DATABASE]
+        companies_collection = db.companies
         
         try:
-            relations_collection.insert_one(data_payload)
-            return {"message":"comment successfully inserted"}
+            # Find the thread and get its title
+            thread = companies_collection.find_one(
+                {"threads._id": ObjectId(thread_id)},
+                {"threads.$": 1}
+            )
+            
+            if not thread or not thread.get('threads'):
+                return {"error": "Thread not found"}
+            
+            thread_title = thread['threads'][0].get('title_text', 'Untitled')
+            
+            data_payload = {
+                "thread_id": thread_id,
+                "thread_title": thread_title,
+                "commenter": commenter
+            }
+            
+            result = relations_collection.insert_one(data_payload)
+            if result.inserted_id:
+                return {"message": "Comment relationship successfully inserted", "id": str(result.inserted_id)}
+            else:
+                return {"error": "Failed to insert comment relationship"}
         except OperationFailure as e:
-            return {"error":f"Something went wrong {e}"}
+            return {"error": f"OperationFailure: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}"}
         
 
     def createCompanyProfile(self,org_number:str):
-         
-        
         DATABASE = os.getenv("DB_NAME")
         db = client[DATABASE]
         collection = db.companies
@@ -294,11 +314,6 @@ class MongoDatabaseHandler:
             if not company_doc:
                 return {"error": "Company not found"}
 
-            thread_exists = any(str(thread['_id']) == thread_id for thread in company_doc.get('threads', []))
-            if not thread_exists:
-                return {"error": "Thread not found in company document"}
-
-            # Convert thread_id to ObjectId
             thread_id_obj = ObjectId(thread_id)
 
             # First, ensure 'comments' is an array
@@ -314,15 +329,25 @@ class MongoDatabaseHandler:
             )
 
             if result.matched_count == 0:
-                return {"error": "Update query did not match any documents"}
+                return {"error": "Thread not found in company document"}
 
-            return {"success": True, "matched_count": result.matched_count, "modified_count": result.modified_count}
+            # Call commentsRelationship class method
+            relationship_result = MongoDatabaseHandler.commentsRelationship(commenter=commenter, thread_id=thread_id)
+            
+            if "error" in relationship_result:
+                return {"warning": "Comment inserted, but relationship creation failed", "detail": relationship_result["error"]}
+
+            return {
+                "success": True, 
+                "matched_count": result.matched_count, 
+                "modified_count": result.modified_count,
+                "relationship_created": relationship_result["message"]
+            }
+
         except OperationFailure as e:
-            return {"error": f"Something went wrong: {e}"}
+            return {"error": f"OperationFailure: {str(e)}"}
         except Exception as e:
-            return {"error": f"Unexpected error {e}"}
-        finally:
-            return {"Success":"Data inserted"}
+            return {"error": f"Unexpected error: {str(e)}"}
     
     def fetchUserThreads(self,username,items:int=1): 
         DATABASE = "threads-relations"
@@ -336,7 +361,26 @@ class MongoDatabaseHandler:
         except OperationFailure as e:
             return {"Something went wrong":str(e)}
         
+    #---------------------Under construction---------------------
+    def fetchUserComments(self,username,items=10,fetchComment = None):  #fetchComment takes the thread id, finds the comment in that thread and we get the output of that specific comment, this is optional
+        DB = client["threads-relations"]
+        relations_collection = DB.relations
+        fetchCommentId = ObjectId(fetchComment)
 
+        try:
+            if fetchComment:
+                DB = client[os.getenv("DB_NAME")]
+                specific_thread = DB.companies
+                specific_comment = relations_collection.find({"username":username},
+                                                             {"thread_id":fetchCommentId})
+                return #user_comment_list
+            else:
+                user_comment = relations_collection.find({"username":username}).limit(items)
+                user_comment_list = list(user_comment)
+                return user_comment_list
+        except OperationFailure as e:
+            return {"error":f"Something went wrong: {e}"}
+    #---------------------Under construction---------------------
 
     def fetchCompanyProfile(self, company_name, items=10):
         DATABASE = os.getenv("DB_NAME")
@@ -473,24 +517,28 @@ print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 
 
 
-"""user = MongoDatabaseHandler()
+user = MongoDatabaseHandler()
 print(user.insertDataComments(
     company_profile="magnussons-fisk-ab",
     thread_id="6689bb8ed93beba432879354",
-    commenter="Nils",
+    commenter="Gordita",
     comment_text="bing bingo bingo"
 ))
 
 
-data = InsertData(company_profile="telenor-sverige-aktiebolag")
+"""data = InsertData(company_profile="telenor-sverige-aktiebolag")
 
 struct = user.fetchCompanyProfile(data.company_profile)
 
-print(dumps(struct,indent=4))
-""" 
+print(dumps(struct,indent=4))"""
+ 
 
-user = MongoDatabaseHandler()
+"""user = MongoDatabaseHandler()
 
 result = user.createCompanyProfile(org_number="556436-6739")
 
-print(result)
+print(result)"""
+
+"""user = MongoDatabaseHandler()
+
+user.insertDataComments(company_profile=)"""
