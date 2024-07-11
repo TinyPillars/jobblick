@@ -11,3 +11,6 @@
     2. Add some sort of mechanic were we can get structure of threads that are contained inside of the company profile
     3. More control of what type of data structures we want to see
 ----------Signed by Marcus----------
+
+6. Rewrite our entire data validation stack
+    1. To be frank, a general purpose dataclass for handling all sort of data was a bad and stupid decision, now I keep getting problems with FastAPI and how it handles parameters or whatever, the problem seems to lie in the fact that certain class variables are Optional
