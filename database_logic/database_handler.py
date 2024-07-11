@@ -4,14 +4,14 @@ from dotenv import load_dotenv
 import datetime
 from pydantic import BaseModel,ValidationError, field_validator,Field,validator, EmailStr
 from typing import Literal, Optional
-from tags_algorithm import tagging_algorithm
+from .tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
 import re
 from mysql.connector import connect, Error, IntegrityError
 from bson import ObjectId
 from disposable_email_domains import blocklist
-from scripts.company_verifier import check_company_existence
+from .scripts.company_verifier import check_company_existence
 import asyncio
 from json import JSONEncoder
 from json import loads
@@ -24,29 +24,42 @@ client = MongoClient(uri)
 #collection = db["threads"]
 
 
-class InsertData(BaseModel):
-    username:Optional[str] = Field(None,max_length=14)
-    email:Optional[EmailStr] = None
-    thread_text:Optional[str] = Field(None,max_length=6000)
-    category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]] = None
-    company_profile:Optional[str] = None
-    star_ratings:Optional[Literal[1,2,3,4,5]] = None
-
-    @field_validator("thread_text")
-    @classmethod
-    def validate_thread_text(cls,value):
-        if value is not None:
-            if len(value) < 500:
-                raise ValueError("Thread text is too short")
-        return value
-    
-    @field_validator("company_profile")
-    @classmethod
-    def validate_compamy_name(cls,value):
-        if value is None:
-            raise ValueError("Company name can not be 'None")
-        
-        value_array  = [i for i in value.split()]
+#-------------------------THIS DATA CLASS IS FUCKED---------------------------------------------------------------------------
+class InsertData(BaseModel):                                                                                                 #|      
+    username:Optional[str] = Field(None,max_length=14)                                                                       #|
+    email:Optional[EmailStr] = None                                                                                          #|
+    thread_text:Optional[str] = Field(None,max_length=6000)                                                                  #|
+    title_text:Optional[str] = Field(None,max_length=60)                                                                     #|
+    category:Optional[Literal["jobb", "lön","arbetsmiljö","arbetsgivare","kultur"]] = None                                   #|
+    company_profile:Optional[str] = None                                                                                     #|
+    star_ratings:Optional[Literal[1,2,3,4,5]] = None                                                                         #|
+                                                                                                                             #|
+    @field_validator("title_text")                                                                                           #|
+    @classmethod                                                                                                             #|
+    def validate_title_text(cls,value):                                                                                      #|
+        if value is None:                                                                                                    #|
+            raise ValueError("Title text can not be None")                                                                   #|
+        lenght = len(value)                                                                                                  #|
+        if lenght < 10:                                                                                                      #|
+            raise ValueError("Title text is too short")                                                                      #|
+                                                                                                                             #|
+    @field_validator("thread_text")                                                                                          #|
+    @classmethod                                                                                                             #|
+    def validate_thread_text(cls,value):                                                                                     #|
+        if value is not None:                                                                                                #|
+            if len(value) < 500:                                                                                             #|
+                raise ValueError("Thread text is too short")                                                                 #|
+        else:                                                                                                                #|
+            raise ValueError("Thread text can not be None")                                                                  #|
+        return value                                                                                                         #|
+                                                                                                                             #|
+    @field_validator("company_profile")                                                                                      #|
+    @classmethod                                                                                                             #|
+    def validate_compamy_name(cls,value):                                                                                    #|
+        if value is None:                                                                                                    #|
+            raise ValueError("Company name can not be 'None")                                                                #|                                                         
+                                                                                                                             #|
+        value_array  = [i for i in value.split()]                                                                            #|
         if len(value_array)>1:
             raise ValueError(f"Lenght of array (company name):{value} exceeds 1, use '-' for each word in a company name")
         
@@ -68,8 +81,7 @@ class InsertData(BaseModel):
         if value in blocklist:
             raise ValueError("Email is part of the blacklisted email providers")
         return value
-
-import bcrypt
+#-------------------------T--------------------------------------------------------------------------------------------------------
 def hash_password(password):
     return bcrypt.hashpw(password.encode('utf-8'),bcrypt.gensalt())
 
@@ -362,24 +374,74 @@ class MongoDatabaseHandler:
             return {"Something went wrong":str(e)}
         
     #---------------------Under construction---------------------
-    def fetchUserComments(self,username,items=10,fetchComment = None):  #fetchComment takes the thread id, finds the comment in that thread and we get the output of that specific comment, this is optional
-        DB = client["threads-relations"]
+    def fetchUserComments(self, username, items=10, fetchComment=None):
+        DB = client["comments-relations"]
         relations_collection = DB.relations
-        fetchCommentId = ObjectId(fetchComment)
 
         try:
             if fetchComment:
-                DB = client[os.getenv("DB_NAME")]
-                specific_thread = DB.companies
-                specific_comment = relations_collection.find({"username":username},
-                                                             {"thread_id":fetchCommentId})
-                return #user_comment_list
+                fetchCommentId = ObjectId(fetchComment)
+                DB_main = client[os.getenv("DB_NAME")]
+                companies_collection = DB_main.companies
+
+                # Find the relation first
+                relation = relations_collection.find_one({
+                    "commenter": username,
+                    "thread_id": str(fetchCommentId)
+                })
+
+                if not relation:
+                    return {"error": "Comment not found"}
+
+                # Now find the specific comment in the main database
+                result = companies_collection.aggregate([
+                    {"$match": {"threads._id": fetchCommentId}},
+                    {"$unwind": "$threads"},
+                    {"$match": {"threads._id": fetchCommentId}},
+                    {"$unwind": "$threads.comments"},
+                    {"$match": {"threads.comments.commenter": username}},
+                    {"$project": {
+                        "thread_title": "$threads.title_text",
+                        "thread_id": "$threads._id",
+                        "comment": "$threads.comments",
+                        "_id": 0
+                    }}
+                ])
+
+                user_comment_list = list(result)
+                if not user_comment_list:
+                    return {"error": "Comment not found in the thread"}
+                return user_comment_list[0]  # Return the first (and should be only) result
+
             else:
-                user_comment = relations_collection.find({"username":username}).limit(items)
-                user_comment_list = list(user_comment)
-                return user_comment_list
+                user_comments = relations_collection.find({"commenter": username}).limit(items)
+                user_comment_list = list(user_comments)
+                
+                # Fetch additional details for each comment
+                DB_main = client[os.getenv("DB_NAME")]
+                companies_collection = DB_main.companies
+                
+                detailed_comments = []
+                for comment in user_comment_list:
+                    thread_details = companies_collection.find_one(
+                        {"threads._id": ObjectId(comment["thread_id"])},
+                        {"threads.$": 1, "company_name": 1}
+                    )
+                    if thread_details:
+                        detailed_comment = {
+                            "thread_id": comment["thread_id"],
+                            "thread_title": thread_details["threads"][0]["title_text"],
+                            "company_name": thread_details["company_name"],
+                            "comment_date": comment.get("_id").generation_time  # Assuming _id is an ObjectId
+                        }
+                        detailed_comments.append(detailed_comment)
+
+                return detailed_comments
+
         except OperationFailure as e:
-            return {"error":f"Something went wrong: {e}"}
+            return {"error": f"OperationFailure: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}"}
     #---------------------Under construction---------------------
 
     def fetchCompanyProfile(self, company_name, items=10):
@@ -517,14 +579,15 @@ print(testar.insertDataThreads("Kalle",long_string,database="Telenor-AB"))"""
 
 
 
-user = MongoDatabaseHandler()
-print(user.insertDataComments(
+#user = MongoDatabaseHandler()
+"""print(user.insertDataComments(
     company_profile="magnussons-fisk-ab",
     thread_id="6689bb8ed93beba432879354",
     commenter="Gordita",
     comment_text="bing bingo bingo"
-))
+))"""
 
+#print(user.fetchUserComments(username="Gordita",fetchComment="6689bb8ed93beba432879354"))
 
 """data = InsertData(company_profile="telenor-sverige-aktiebolag")
 
@@ -542,3 +605,8 @@ print(result)"""
 """user = MongoDatabaseHandler()
 
 user.insertDataComments(company_profile=)"""
+
+"""lol = MongoDatabaseHandler()
+user = lol.fetchCompanyProfile("telenor-sverige-aktiebolag")
+
+print(user)"""
