@@ -4,14 +4,15 @@ from dotenv import load_dotenv
 import datetime
 from pydantic import BaseModel,ValidationError, field_validator,Field,validator, EmailStr
 from typing import Literal, Optional
-from .tags_algorithm import tagging_algorithm
+from tags_algorithm import tagging_algorithm
 from json import dumps
 from pymongo.errors import OperationFailure
 import re
 from mysql.connector import connect, Error, IntegrityError
+import MySQLdb
 from bson import ObjectId
 from disposable_email_domains import blocklist
-from .scripts.company_verifier import check_company_existence
+from scripts.company_verifier import check_company_existence
 import asyncio
 from json import JSONEncoder
 from json import loads
@@ -96,6 +97,8 @@ def check_email(email,hashed_email):
     expected_hash = base64.b64encode(sha256_hash).decode('utf-8')
     return hashed_email==expected_hash
 def hash_email(email):
+    if email is None:
+        return None
     sha256_hash = hashlib.sha256(email.encode('utf-8')).digest()
     hashed_email = base64.b64encode(sha256_hash).decode('utf-8')
     return hashed_email
@@ -103,14 +106,12 @@ def hash_email(email):
 
 class MySQLHandler:
     def __init__(self):
-        self.database = connect(
-            host = os.getenv("HOST"),
-            port = os.getenv("PORT"),
-            user = os.getenv("USER"),
-            password = os.getenv("PASSWORD"),
-            database = os.getenv("DATABASE_NAME")
-                    )
-    
+        self.database = MySQLdb.connect(
+                host=os.getenv("HOST"),
+                user=os.getenv("USER"),
+                passwd=os.getenv("MYSQL_PASSWORD"),
+                db=os.getenv("DATABASE_NAME"),
+                )    
 
     def create_table_query(self):
         query = """
@@ -140,7 +141,7 @@ class MySQLHandler:
             query = "INSERT INTO users(username,email,password,verified) VALUES (%s, %s, %s, %s)"
             values = (username,hashed_email,hashed_password,True)
         else:
-            query = "INSERT INTO users(username,password,verified) VALUES (%s, %s)"
+            query = "INSERT INTO users(username,password,verified) VALUES (%s, %s,%s)"
             values = (username,hashed_password,False)
         
         try:
@@ -565,9 +566,11 @@ if __name__ == "__main__":
 #print(test.registerUser(password="password0",username="banan0",email="abdi_0@gmail.com"))
 #print(test.create_table_query())
 #print(test.registerUser(username="banan1",password="password1",email="abdi_1@gmail.com"))
-
 """
-for i in range(4):
+lol = MySQLHandler()
+
+print(lol.create_table_query())"""
+"""for i in range(4):
     print(lol.registerUser(username=f"banan{i}",password=f"password{i}",email=f"abdi_{i}@gmail.com"))
 """
 
@@ -611,3 +614,14 @@ user.insertDataComments(company_profile=)"""
 user = lol.fetchCompanyProfile("telenor-sverige-aktiebolag")
 
 print(user)"""
+
+
+
+"""user = MySQLHandler()
+
+
+print(user.create_table_query())"""
+user = MySQLHandler()
+register_user = user.registerUser(username="majsmannen",password="password123")
+
+print(register_user)
