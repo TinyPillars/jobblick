@@ -180,3 +180,9 @@ __pycache__/
 .*.swo
 .*.swn
 .*.swo
+
+# Bams local computer
+dblogic_local/
+jobblick_pyenv/
+mongoDB_Insert_test copy.py
+mongoDB_Query_test.py
